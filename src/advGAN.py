@@ -66,7 +66,8 @@ class AdvGAN_Attack:
                 c, 
                 n_steps_D, 
                 n_steps_G, 
-                is_relativistic
+                is_relativistic,
+                checkpoint_dir='./checkpoints/AdvGAN'
             ):
         self.device = device
         self.n_labels = n_labels
@@ -105,6 +106,8 @@ class AdvGAN_Attack:
 
         if not os.path.exists('{}{}/'.format(losses_path, target)):
             os.makedirs('{}{}/'.format(losses_path, target))
+
+        self.checkpoint_dir = checkpoint_dir
 
 
     def train_batch(self, x, labels):
@@ -214,7 +217,11 @@ class AdvGAN_Attack:
             loss_hinge.append(loss_hinge_sum / batch_size)
 
             # save generator
-            torch.save(self.G.state_dict(), '{}G_epoch_{}.pth'.format(models_path, str(epoch)))
+            if not os.path.exists(self.checkpoint_dir):
+                os.makedirs(self.checkpoint_dir)
+                
+            torch.save(self.G.state_dict(), f'{self.checkpoint_dir}/G_epoch_{epoch}.pth')
+            torch.save(self.D.state_dict(), f'{self.checkpoint_dir}/D_epoch_{epoch}.pth')
 
 
         plt.figure()

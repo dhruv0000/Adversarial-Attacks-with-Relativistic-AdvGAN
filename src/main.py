@@ -17,6 +17,8 @@
 import os
 import json
 import argparse
+import time
+from pathlib import Path
 
 import numpy as np
 
@@ -58,39 +60,29 @@ def load_hyperparameters(config_file):
     return target, lr_target, epochs_target, l_inf_bound, epochs, lr, alpha, beta, gamma, kappa, c, n_steps_D, n_steps_G, is_relativistic
 
 
-def create_dirs():
-    if not os.path.exists('./results/examples/MNIST/train/'):
-        os.makedirs('./results/examples/MNIST/train/')
-
-    if not os.path.exists('./results/examples/MNIST/test/'):
-        os.makedirs('./results/examples/MNIST/test/')
-
-    if not os.path.exists('./results/examples/CIFAR10/train/'):
-        os.makedirs('./results/examples/CIFAR10/train/')
-
-    if not os.path.exists('./results/examples/CIFAR10/test/'):
-        os.makedirs('./results/examples/CIFAR10/test/')
-
-    if not os.path.exists('./results/examples/HighResolution/train/'):
-        os.makedirs('./results/examples/HighResolution/train/')
-
-    if not os.path.exists('./results/examples/HighResolution/test/'):
-        os.makedirs('./results/examples/HighResolution/test/')
-
-    if not os.path.exists('./checkpoints/target/'):
-        os.makedirs('./checkpoints/target/')
-
-    if not os.path.exists('./npy/MNIST/'):
-        os.makedirs('./npy/MNIST/')
-
-    if not os.path.exists('./npy/CIFAR10/'):
-        os.makedirs('./npy/CIFAR10/')
-
-    if not os.path.exists('./npy/HighResolution/'):
-        os.makedirs('./npy/HighResolution/')
+def create_dirs(run_id):
+    """Create necessary directories with unique run ID"""
+    # Create base directories
+    os.makedirs(f'./results/{run_id}/examples/MNIST/train/', exist_ok=True)
+    os.makedirs(f'./results/{run_id}/examples/MNIST/test/', exist_ok=True)
+    os.makedirs(f'./results/{run_id}/examples/CIFAR10/train/', exist_ok=True)
+    os.makedirs(f'./results/{run_id}/examples/CIFAR10/test/', exist_ok=True)
+    os.makedirs(f'./results/{run_id}/examples/HighResolution/train/', exist_ok=True)
+    os.makedirs(f'./results/{run_id}/examples/HighResolution/test/', exist_ok=True)
+    os.makedirs(f'./checkpoints/{run_id}/target/', exist_ok=True)
+    os.makedirs(f'./checkpoints/{run_id}/AdvGAN/', exist_ok=True)
+    os.makedirs(f'./npy/{run_id}/MNIST/', exist_ok=True)
+    os.makedirs(f'./npy/{run_id}/CIFAR10/', exist_ok=True)
+    os.makedirs(f'./npy/{run_id}/HighResolution/', exist_ok=True)
+    
+    return {
+        'results_dir': f'./results/{run_id}',
+        'checkpoints_dir': f'./checkpoints/{run_id}',
+        'npy_dir': f'./npy/{run_id}'
+    }
 
 
-def init_params(target):
+def init_params(target, dirs):
     if target == 'MNIST':
         batch_size = 128
         l_inf_bound = .3 if L_INF_BOUND == 'Auto' else L_INF_BOUND
@@ -149,7 +141,7 @@ def init_params(target):
     return train_dataloader, test_dataloader, target_model, batch_size, l_inf_bound, n_labels, n_channels, len(test_dataset)
 
 
-def train_target_model(target, target_model, epochs, train_dataloader, test_dataloader, dataset_size):
+def train_target_model(target, target_model, epochs, train_dataloader, test_dataloader, dataset_size, dirs):
     target_model.train()
     optimizer = torch.optim.Adam(target_model.parameters(), lr=LR_TARGET_MODEL)
     
@@ -172,7 +164,7 @@ def train_target_model(target, target_model, epochs, train_dataloader, test_data
         print('Loss in epoch {}: {}'.format(epoch, loss_epoch.item()))
 
     # save model
-    targeted_model_file_name = './checkpoints/target/{}_bs_{}_lbound_{}.pth'.format(target, batch_size, l_inf_bound)
+    targeted_model_file_name = f'{dirs["checkpoints_dir"]}/target/{target}_bs_{batch_size}_lbound_{l_inf_bound}.pth'
     torch.save(target_model.state_dict(), targeted_model_file_name)
     target_model.eval()
 
@@ -189,7 +181,7 @@ def train_target_model(target, target_model, epochs, train_dataloader, test_data
     print('Accuracy in {} test set: {}%\n'.format(target, 100 * n_correct.item()/dataset_size))
 
 
-def test_attack_performance(target, dataloader, mode, adv_GAN, target_model, batch_size, l_inf_bound, dataset_size):
+def test_attack_performance(target, dataloader, mode, adv_GAN, target_model, batch_size, l_inf_bound, dataset_size, dirs):
     n_correct = 0
 
     true_labels, pred_labels = [], []
@@ -220,9 +212,9 @@ def test_attack_performance(target, dataloader, mode, adv_GAN, target_model, bat
                 inv_norm = cd.NormalizeInverse(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
                 cur_img = inv_norm(img[j])
 
-                save_image(cur_img + perturbation[j], './results/examples/{}/{}/example_{}_{}.png'.format(target, mode, i, j))
+                save_image(cur_img + perturbation[j], '{}/examples/{target}/{mode}/example_{}_{}.png'.format(dirs["results_dir"], i, j))
             else:
-                save_image(cur_img, './results/examples/{}/{}/example_{}_{}.png'.format(target, mode, i, j))
+                save_image(cur_img, '{}/examples/{target}/{mode}/example_{}_{}.png'.format(dirs["results_dir"], i, j))
 
 
     true_labels = np.concatenate(true_labels, axis=0)
@@ -230,10 +222,10 @@ def test_attack_performance(target, dataloader, mode, adv_GAN, target_model, bat
     img_np = np.concatenate(img_np, axis=0)
     adv_img_np = np.concatenate(adv_img_np, axis=0)
 
-    np.save('./npy/{}/true_labels'.format(target), true_labels)
-    np.save('./npy/{}/pred_labels'.format(target), pred_labels)
-    np.save('./npy/{}/img_np'.format(target), img_np)
-    np.save('./npy/{}/adv_img_np'.format(target), adv_img_np)
+    np.save(f'{dirs["npy_dir"]}/{target}/true_labels', true_labels)
+    np.save(f'{dirs["npy_dir"]}/{target}/pred_labels', pred_labels)
+    np.save(f'{dirs["npy_dir"]}/{target}/img_np', img_np)
+    np.save(f'{dirs["npy_dir"]}/{target}/adv_img_np', adv_img_np)
 
     print(target)
     print('Correctly Classified: ', n_correct.item())
@@ -249,11 +241,19 @@ parser.add_argument('--config', type=str, default='hyperparams.json',
                     help='Path to hyperparameters JSON file (default: hyperparams.json)')
 args = parser.parse_args()
 
+# Extract config filename without extension for run_id
+config_name = Path(args.config).stem
+
 TARGET, LR_TARGET_MODEL, EPOCHS_TARGET_MODEL, L_INF_BOUND, EPOCHS, LR, ALPHA, BETA, GAMMA, KAPPA, C, N_STEPS_D, N_STEPS_G, IS_RELATIVISTIC = load_hyperparameters(args.config)
 
+# Create a unique run ID based on config name, target dataset, and relativistic setting
+rel_suffix = "relativistic" if IS_RELATIVISTIC else "standard"
+timestamp = time.strftime("%Y%m%d_%H%M%S")
+run_id = f"{config_name}_{TARGET}_{rel_suffix}_{timestamp}"
 
+print(f'\nRUN ID: {run_id}')
 print('\nCREATING NECESSARY DIRECTORIES...')
-create_dirs()
+dirs = create_dirs(run_id)
 
 
 # Define what device we are using
@@ -264,12 +264,12 @@ device = torch.device('cuda' if (use_cuda and torch.cuda.is_available()) else 'c
 
 
 print('\nPREPARING DATASETS...')
-train_dataloader, test_dataloader, target_model, batch_size, l_inf_bound, n_labels, n_channels, test_set_size = init_params(TARGET)
+train_dataloader, test_dataloader, target_model, batch_size, l_inf_bound, n_labels, n_channels, test_set_size = init_params(TARGET, dirs)
 
 if TARGET != 'HighResolution':
     print('CHECKING FOR PRETRAINED TARGET MODEL...')
     try:
-        pretrained_target = './checkpoints/target/{}_bs_{}_lbound_{}.pth'.format(TARGET, batch_size, l_inf_bound)
+        pretrained_target = f'{dirs["checkpoints_dir"]}/target/{TARGET}_bs_{batch_size}_lbound_{l_inf_bound}.pth'
         target_model.load_state_dict(torch.load(pretrained_target))
         target_model.eval()
     except FileNotFoundError:
@@ -280,7 +280,8 @@ if TARGET != 'HighResolution':
                             epochs=EPOCHS_TARGET_MODEL, 
                             train_dataloader=train_dataloader, 
                             test_dataloader=test_dataloader, 
-                            dataset_size=test_set_size
+                            dataset_size=test_set_size,
+                            dirs=dirs
                         )
 print('TARGET LOADED!')
 
@@ -302,18 +303,29 @@ advGAN = AdvGAN_Attack(
                         c=C, 
                         n_steps_D=N_STEPS_D, 
                         n_steps_G=N_STEPS_G, 
-                        is_relativistic=IS_RELATIVISTIC
+                        is_relativistic=IS_RELATIVISTIC,
+                        checkpoint_dir=f'{dirs["checkpoints_dir"]}/AdvGAN'
                     )
 advGAN.train(train_dataloader, EPOCHS)
 
 
 # load the trained AdvGAN
 print('\nLOADING TRAINED ADVGAN!')
-adv_GAN_path = './checkpoints/AdvGAN/G_epoch_{}.pth'.format(EPOCHS)
+adv_GAN_path = f'{dirs["checkpoints_dir"]}/AdvGAN/G_epoch_{EPOCHS}.pth'
 adv_GAN = models.Generator(n_channels, n_channels, TARGET).to(device)
 adv_GAN.load_state_dict(torch.load(adv_GAN_path))
 adv_GAN.eval()
 
 
 print('\nTESTING PERFORMANCE OF ADVGAN...')
-test_attack_performance(target=TARGET, dataloader=test_dataloader, mode='test', adv_GAN=adv_GAN, target_model=target_model, batch_size=batch_size, l_inf_bound=l_inf_bound, dataset_size=test_set_size)
+test_attack_performance(
+    target=TARGET, 
+    dataloader=test_dataloader, 
+    mode='test', 
+    adv_GAN=adv_GAN, 
+    target_model=target_model, 
+    batch_size=batch_size, 
+    l_inf_bound=l_inf_bound, 
+    dataset_size=test_set_size,
+    dirs=dirs
+)
