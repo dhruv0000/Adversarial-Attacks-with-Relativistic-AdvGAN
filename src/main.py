@@ -16,6 +16,7 @@
 
 import os
 import json
+import argparse
 
 import numpy as np
 
@@ -242,7 +243,13 @@ def test_attack_performance(target, dataloader, mode, adv_GAN, target_model, bat
 
 
 print('\nLOADING CONFIGURATIONS...')
-TARGET, LR_TARGET_MODEL, EPOCHS_TARGET_MODEL, L_INF_BOUND, EPOCHS, LR, ALPHA, BETA, GAMMA, KAPPA, C, N_STEPS_D, N_STEPS_G, IS_RELATIVISTIC = load_hyperparameters('hyperparams.json')
+# Parse command line arguments
+parser = argparse.ArgumentParser(description='Adversarial Attacks with AdvGAN and AdvRaGAN')
+parser.add_argument('--config', type=str, default='hyperparams.json', 
+                    help='Path to hyperparameters JSON file (default: hyperparams.json)')
+args = parser.parse_args()
+
+TARGET, LR_TARGET_MODEL, EPOCHS_TARGET_MODEL, L_INF_BOUND, EPOCHS, LR, ALPHA, BETA, GAMMA, KAPPA, C, N_STEPS_D, N_STEPS_G, IS_RELATIVISTIC = load_hyperparameters(args.config)
 
 
 print('\nCREATING NECESSARY DIRECTORIES...')
