@@ -1,16 +1,19 @@
 {
-  "target_dataset": "MNIST",
-  "target_learning_rate": 0.001,
-  "target_model_epochs": 10,
-  "maximum_perturbation_allowed": 0.3,
-  "AdvGAN_epochs": 20,
-  "AdvGAN_learning_rate": 0.0002,
-  "alpha": 0.1,
-  "beta": 0.001,
-  "gamma": 1.0,
-  "kappa": 0.0,
-  "c": 5,
-  "D_number_of_steps_per_batch": 1,
-  "G_number_of_steps_per_batch": 1,
-  "is_relativistic": "True"
+ 	"comment": "Settings for Target Model",
+ 	"target_dataset": "MNIST",
+ 	"target_learning_rate": 0.001,
+ 	"target_model_epochs": 50,
+ 	
+ 	"comment": "Settings for AdvGAN",
+ 	"AdvGAN_epochs": 60,
+ 	"AdvGAN_learning_rate": 0.001,
+ 	"maximum_perturbation_allowed": "Auto",
+ 	"alpha": 5,
+ 	"beta": 1,
+ 	"gamma": 1,
+ 	"kappa": 0,
+ 	"c": 0.1,
+ 	"D_number_of_steps_per_batch": 1,
+ 	"G_number_of_steps_per_batch": 1,
+ 	"is_relativistic": "True"
 }
