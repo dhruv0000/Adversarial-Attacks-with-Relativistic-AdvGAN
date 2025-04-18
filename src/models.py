@@ -80,7 +80,8 @@ class Generator(nn.Module):
             nn.ReLU(),
             nn.Conv2d(32, 16, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
-            nn.Conv2d(16, gen_input_nc * 9, kernel_size=3, stride=1, padding=1),  # 3x3 kernel per input channel
+            nn.AdaptiveAvgPool2d(1),  # Reduce spatial dimensions to 1x1
+            nn.Conv2d(16, gen_input_nc * 9, kernel_size=1),  # One 3x3 kernel per channel
             nn.Tanh()  # Normalize kernel values
         )
 
@@ -135,7 +136,7 @@ class Generator(nn.Module):
     def forward(self, x):
         # Predict dynamic filter (3x3 kernel per input channel)
         batch_size, c, h, w = x.size()
-        filter_kernel = self.filter_estimator(x)  # [batch, c*9, h, w]
+        filter_kernel = self.filter_estimator(x)  # [batch, c*9, 1, 1]
         filter_kernel = filter_kernel.view(batch_size, c, 3, 3)  # [batch, c, 3, 3]
         x_padded = F.pad(x, (1, 1, 1, 1), mode='reflect')  # [batch, c, h+2, w+2]
         filtered_x = torch.stack([
