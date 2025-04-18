@@ -80,7 +80,7 @@ class Generator(nn.Module):
             nn.ReLU(),
             nn.Conv2d(32, 16, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
-            nn.Conv2d(16, 9, kernel_size=3, stride=1, padding=1),  # 3x3 kernel
+            nn.Conv2d(16, gen_input_nc * 9, kernel_size=3, stride=1, padding=1),  # 3x3 kernel per input channel
             nn.Tanh()  # Normalize kernel values
         )
 
@@ -133,12 +133,15 @@ class Generator(nn.Module):
         self.decoder = nn.Sequential(*decoder_lis)
 
     def forward(self, x):
-        # Predict dynamic filter (3x3 kernel)
-        filter_kernel = self.filter_estimator(x)  # [batch, 9, h, w]
-        filter_kernel = filter_kernel.view(-1, 1, 3, 3)  # [batch*9, 1, 3, 3]
-        batch_size = x.size(0)
-        x_padded = F.pad(x, (1, 1, 1, 1), mode='reflect')  # Pad for 3x3 conv
-        filtered_x = F.conv2d(x_padded, filter_kernel, groups=batch_size)  # Apply dynamic filter
+        # Predict dynamic filter (3x3 kernel per input channel)
+        batch_size, c, h, w = x.size()
+        filter_kernel = self.filter_estimator(x)  # [batch, c*9, h, w]
+        filter_kernel = filter_kernel.view(batch_size, c, 3, 3)  # [batch, c, 3, 3]
+        x_padded = F.pad(x, (1, 1, 1, 1), mode='reflect')  # [batch, c, h+2, w+2]
+        filtered_x = torch.stack([
+            F.conv2d(x_padded[i:i+1], filter_kernel[i:i+1], padding=0)  # Apply per image
+            for i in range(batch_size)
+        ]).squeeze(1)  # [batch, c, h, w]
 
         # GAN pipeline
         x = self.encoder(filtered_x)
