@@ -81,16 +81,22 @@ class Generator(nn.Module):
             nn.Conv2d(32, 16, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(16, gen_input_nc * gen_input_nc * 9, kernel_size=1),  # c kernels of c*3*3 each
+            nn.Conv2d(16, gen_input_nc * 9, kernel_size=1),
             nn.Tanh()
         )
 
-        # Encoder
+        # Learnable residual weight for combining filtered and original input
+        self.residual_weight = nn.Parameter(torch.tensor(0.5))
+
+        # Multi-scale convolutional block for encoder
+        self.conv_small = nn.Conv2d(gen_input_nc, 4, kernel_size=3, stride=1, padding=0, bias=True)
+        self.conv_large = nn.Conv2d(gen_input_nc, 4, kernel_size=5, stride=1, padding=0, bias=True)
+        self.norm_small = nn.InstanceNorm2d(4)
+        self.norm_large = nn.InstanceNorm2d(4)
+
+        # Encoder (adjusted for concatenated multi-scale features)
         encoder_lis = [
-            nn.Conv2d(gen_input_nc, 8, kernel_size=3, stride=1, padding=0, bias=True),
-            nn.InstanceNorm2d(8),
-            nn.ReLU(),
-            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=0, bias=True),
+            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=0, bias=True),  # 8 = 4 (small) + 4 (large)
             nn.InstanceNorm2d(16),
             nn.ReLU(),
             nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=0, bias=True),
@@ -136,17 +142,25 @@ class Generator(nn.Module):
     def forward(self, x):
         # Predict dynamic filter (3x3 kernel per input channel)
         batch_size, c, h, w = x.size()
-        filter_kernel = self.filter_estimator(x)  # [batch, c*c*9, 1, 1]
-        filter_kernel = filter_kernel.view(batch_size, c, c * 3 * 3, 1, 1)  # [batch, c_out, c_in*3*3, 1, 1]
-        filter_kernel = filter_kernel.view(batch_size, c, c, 3, 3)  # [batch, c_out, c_in, 3, 3]
+        filter_kernel = self.filter_estimator(x)  # [batch, c*9, 1, 1]
+        filter_kernel = filter_kernel.view(batch_size, c, 3, 3)  # [batch, c, 3, 3]
         x_padded = F.pad(x, (1, 1, 1, 1), mode='reflect')  # [batch, c, h+2, w+2]
-        filtered_x = torch.zeros(batch_size, c, h, w, device=x.device)
-        for i in range(batch_size):
-            # Apply c_out filters, each with c_in channels
-            filtered_x[i] = F.conv2d(x_padded[i:i+1], filter_kernel[i], padding=0)  # [1, c, h, w]
-        
+        filtered_x = torch.stack([
+            F.conv2d(x_padded[i:i+1], filter_kernel[i:i+1], padding=0)
+            for i in range(batch_size)
+        ]).squeeze(1)  # [batch, c, h, w]
+
+        # Apply residual connection
+        residual_weight = torch.sigmoid(self.residual_weight)
+        filtered_x = residual_weight * filtered_x + (1 - residual_weight) * x
+
+        # Multi-scale feature extraction
+        x_small = F.relu(self.norm_small(self.conv_small(filtered_x)))  # 3x3 conv
+        x_large = F.relu(self.norm_large(self.conv_large(filtered_x)))  # 5x5 conv
+        x_multi = torch.cat([x_small, x_large], dim=1)  # Concatenate: [batch, 8, h-2, w-2]
+
         # GAN pipeline
-        x = self.encoder(filtered_x)
+        x = self.encoder(x_multi)
         x = self.bottle_neck(x)
         x = self.decoder(x)
         return x
