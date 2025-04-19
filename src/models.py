@@ -90,7 +90,7 @@ class Generator(nn.Module):
 
         # Multi-scale convolutional block for encoder
         self.conv_small = nn.Conv2d(gen_input_nc, 4, kernel_size=3, stride=1, padding=0, bias=True)
-        self.conv_large = nn.Conv2d(gen_input_nc, 4, kernel_size=5, stride=1, padding=0, bias=True)
+        self.conv_large = nn.Conv2d(gen_input_nc, 4, kernel_size=5, stride=1, padding=1, bias=True)  # Adjusted padding
         self.norm_small = nn.InstanceNorm2d(4)
         self.norm_large = nn.InstanceNorm2d(4)
 
@@ -155,8 +155,8 @@ class Generator(nn.Module):
         filtered_x = residual_weight * filtered_x + (1 - residual_weight) * x
 
         # Multi-scale feature extraction
-        x_small = F.relu(self.norm_small(self.conv_small(filtered_x)))  # 3x3 conv
-        x_large = F.relu(self.norm_large(self.conv_large(filtered_x)))  # 5x5 conv
+        x_small = F.relu(self.norm_small(self.conv_small(filtered_x)))  # 3x3 conv: [batch, 4, h-2, w-2]
+        x_large = F.relu(self.norm_large(self.conv_large(filtered_x)))  # 5x5 conv: [batch, 4, h-2, w-2]
         x_multi = torch.cat([x_small, x_large], dim=1)  # Concatenate: [batch, 8, h-2, w-2]
 
         # GAN pipeline
