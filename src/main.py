@@ -212,9 +212,9 @@ def test_attack_performance(target, dataloader, mode, adv_GAN, target_model, bat
                 inv_norm = cd.NormalizeInverse(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
                 cur_img = inv_norm(img[j])
 
-                save_image(cur_img + perturbation[j], '{}/examples/{target}/{mode}/example_{}_{}.png'.format(dirs["results_dir"], target, mode, i, j))
+                save_image(cur_img + perturbation[j], './results/examples/{}/{}/example_{}_{}.png'.format(target, mode, i, j))
             else:
-                save_image(cur_img, '{}/examples/{target}/{mode}/example_{}_{}.png'.format(dirs["results_dir"], target, mode, i, j))
+                save_image(cur_img, './results/examples/{}/{}/example_{}_{}.png'.format(target, mode, i, j))
 
 
     true_labels = np.concatenate(true_labels, axis=0)

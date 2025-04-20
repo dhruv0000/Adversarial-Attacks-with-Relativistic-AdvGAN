@@ -1,21 +1,3 @@
-# Adversarial Attacks with AdvGAN and AdvRaGAN
-# Copyright(C) 2020 Georgios (Giorgos) Karantonis
-#
-# This program is free software: you can redistribute it and / or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program. If not, see <http://www.gnu.org/licenses/>.
-
-# Modified from https://github.com/mathcbc/advGAN_pytorch/blob/master/advGAN.py
-
 import matplotlib
 matplotlib.use('Agg')
 
@@ -142,23 +124,24 @@ class AdvGAN_Attack:
             perturbation_norm = torch.mean(torch.norm(perturbation.view(perturbation.shape[0], -1), 2, dim=1))
             loss_hinge = torch.max(torch.zeros(1, device=self.device), perturbation_norm - self.c)
 
-            # the Adv Loss part of L
+            # the Adv Loss part of L using logits instead of probabilities
             logits_model = self.model(adv_images)
-            probs_model = F.softmax(logits_model, dim=1)
             onehot_labels = torch.eye(self.n_labels, device=self.device)[labels]
 
             if self.targeted:
                 # Targeted attack: encourage prediction of self.target
-                target_prob = probs_model[:, self.target]
-                probs_excluding_target = probs_model.clone()
-                probs_excluding_target[:, self.target] = 0
-                other_prob, _ = torch.max(probs_excluding_target, dim=1)
-                loss_adv = torch.max(other_prob - target_prob, self.kappa * torch.ones_like(target_prob))
+                target = torch.full_like(labels, self.target)
+                onehot_target = torch.eye(self.n_labels, device=self.device)[target]
+                target_logit = torch.sum(onehot_target * logits_model, dim=1)
+                other_logits = logits_model - onehot_target * 1e6  # exclude target logit
+                max_other_logit, _ = torch.max(other_logits, dim=1)
+                loss_adv = torch.max(max_other_logit - target_logit, self.kappa * torch.ones_like(target_logit))
             else:
                 # Untargeted attack: encourage misclassification away from true label
-                real_class_prob = torch.sum(onehot_labels * probs_model, dim=1)
-                target_class_prob, _ = torch.max((1 - onehot_labels) * probs_model - onehot_labels * 10000, dim=1)
-                loss_adv = torch.max(real_class_prob - target_class_prob, self.kappa * torch.ones_like(target_class_prob))
+                real_class_logit = torch.sum(onehot_labels * logits_model, dim=1)
+                other_logits = logits_model - onehot_labels * 1e6  # exclude true label logit
+                max_other_logit, _ = torch.max(other_logits, dim=1)
+                loss_adv = torch.max(real_class_logit - max_other_logit, self.kappa * torch.ones_like(real_class_logit))
 
             loss_adv = torch.sum(loss_adv)
 
