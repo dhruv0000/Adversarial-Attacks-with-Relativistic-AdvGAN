@@ -30,12 +30,8 @@ import torch.nn.functional as F
 
 import models
 
-
-
 models_path = './checkpoints/AdvGAN/'
 losses_path = './results/losses/'
-
-
 
 def init_weights(m):
     '''
@@ -47,7 +43,6 @@ def init_weights(m):
     elif classname.find('BatchNorm') != -1:
         nn.init.normal_(m.weight.data, 1.0, 0.02)
         nn.init.constant_(m.bias.data, 0)
-
 
 class AdvGAN_Attack:
     def __init__(
@@ -67,6 +62,7 @@ class AdvGAN_Attack:
                 n_steps_D, 
                 n_steps_G, 
                 is_relativistic,
+                targeted = False,
                 checkpoint_dir='./checkpoints/AdvGAN'
             ):
         self.device = device
@@ -74,6 +70,7 @@ class AdvGAN_Attack:
         self.model = model
         
         self.target = target
+        self.targeted = targeted
 
         self.lr = lr
 
@@ -109,7 +106,6 @@ class AdvGAN_Attack:
 
         self.checkpoint_dir = checkpoint_dir
 
-
     def train_batch(self, x, labels):
         # optimize D
         for i in range(self.n_steps_D):
@@ -126,13 +122,9 @@ class AdvGAN_Attack:
             real = torch.ones_like(pred_real, device=self.device)
             fake = torch.zeros_like(pred_fake, device=self.device)
 
-
-
             if self.is_relativistic:
-                # loss_D = F.binary_cross_entropy_with_logits(torch.squeeze(logits_real - logits_fake), real)
                 loss_D_real = torch.mean((logits_real - torch.mean(logits_fake) - real)**2)
                 loss_D_fake = torch.mean((logits_fake - torch.mean(logits_real) + real)**2)
-
                 loss_D = (loss_D_fake + loss_D_real) / 2
             else:
                 loss_D_real = F.mse_loss(pred_real, torch.ones_like(pred_real, device=self.device))
@@ -155,10 +147,19 @@ class AdvGAN_Attack:
             probs_model = F.softmax(logits_model, dim=1)
             onehot_labels = torch.eye(self.n_labels, device=self.device)[labels]
 
-            # C&W loss
-            real_class_prob = torch.sum(onehot_labels * probs_model, dim=1)
-            target_class_prob, _ = torch.max((1 - onehot_labels) * probs_model - onehot_labels * 10000, dim=1)
-            loss_adv = torch.max(real_class_prob - target_class_prob, self.kappa * torch.ones_like(target_class_prob))
+            if self.targeted:
+                # Targeted attack: encourage prediction of self.target
+                target_prob = probs_model[:, self.target]
+                probs_excluding_target = probs_model.clone()
+                probs_excluding_target[:, self.target] = 0
+                other_prob, _ = torch.max(probs_excluding_target, dim=1)
+                loss_adv = torch.max(other_prob - target_prob, self.kappa * torch.ones_like(target_prob))
+            else:
+                # Untargeted attack: encourage misclassification away from true label
+                real_class_prob = torch.sum(onehot_labels * probs_model, dim=1)
+                target_class_prob, _ = torch.max((1 - onehot_labels) * probs_model - onehot_labels * 10000, dim=1)
+                loss_adv = torch.max(real_class_prob - target_class_prob, self.kappa * torch.ones_like(target_class_prob))
+
             loss_adv = torch.sum(loss_adv)
 
             # the GAN Loss part of L
@@ -166,21 +167,17 @@ class AdvGAN_Attack:
             logits_fake, pred_fake = self.D(adv_images)
 
             if self.is_relativistic:
-                # loss_G_gan = F.binary_cross_entropy_with_logits(torch.squeeze(logits_fake - logits_real), real)
                 loss_G_real = torch.mean((logits_real - torch.mean(logits_fake) + real)**2)
                 loss_G_fake = torch.mean((logits_fake - torch.mean(logits_real) - real)**2)
-                
                 loss_G_gan = (loss_G_real + loss_G_fake) / 2
             else:
                 loss_G_gan = F.mse_loss(pred_fake, torch.ones_like(pred_fake, device=self.device))
-
 
             loss_G = self.gamma * loss_adv + self.alpha * loss_G_gan + self.beta * loss_hinge
             loss_G.backward()
             self.optimizer_G.step()
 
         return loss_D.item(), loss_G.item(), loss_G_gan.item(), loss_hinge.item(), loss_adv.item()
-
 
     def train(self, train_dataloader, epochs):
         loss_D, loss_G, loss_G_gan, loss_hinge, loss_adv = [], [], [], [], []
@@ -222,7 +219,6 @@ class AdvGAN_Attack:
                 
             torch.save(self.G.state_dict(), f'{self.checkpoint_dir}/G_epoch_{epoch}.pth')
             torch.save(self.D.state_dict(), f'{self.checkpoint_dir}/D_epoch_{epoch}.pth')
-
 
         plt.figure()
         plt.plot(loss_D)
