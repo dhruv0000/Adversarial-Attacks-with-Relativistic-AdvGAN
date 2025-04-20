@@ -214,7 +214,7 @@ def test_attack_performance(target, dataloader, mode, adv_GAN, target_model, bat
 
                 save_image(cur_img + perturbation[j], '{}/examples/{target}/{mode}/example_{}_{}.png'.format(dirs["results_dir"], target, mode, i, j))
             else:
-                save_image(cur_img, '{}/examples/{target}/{mode}/example_{}_{}.png'.format(dirs["results_dir"], i, j))
+                save_image(cur_img, '{}/examples/{target}/{mode}/example_{}_{}.png'.format(dirs["results_dir"], target, mode, i, j))
 
 
     true_labels = np.concatenate(true_labels, axis=0)
