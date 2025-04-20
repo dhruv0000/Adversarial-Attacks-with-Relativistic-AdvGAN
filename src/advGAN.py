@@ -44,13 +44,15 @@ class AdvGAN_Attack:
                 n_steps_D, 
                 n_steps_G, 
                 is_relativistic,
-                targeted = False,
+                targeted = True,
+                attack_target=0,  # target class for the attack (e.g., class 0)
                 checkpoint_dir='./checkpoints/AdvGAN'
             ):
         self.device = device
         self.n_labels = n_labels
         self.model = model
-        
+
+        self.attack_target = attack_target
         self.target = target
         self.targeted = targeted
 
@@ -130,7 +132,7 @@ class AdvGAN_Attack:
 
             if self.targeted:
                 # Targeted attack: encourage prediction of self.target
-                target = torch.full_like(labels, self.target)
+                target = torch.full_like(labels, self.attack_target)
                 onehot_target = torch.eye(self.n_labels, device=self.device)[target]
                 target_logit = torch.sum(onehot_target * logits_model, dim=1)
                 other_logits = logits_model - onehot_target * 1e6  # exclude target logit
